@@ -20,3 +20,7 @@
 
     # The secret token value created by Zoom
     #secret.value: ZOOMTOKEN
+
+    # The CRC validation provider is required to validate the webhook
+    # according to the provider's algorithm.
+    #crc.provider: zoom

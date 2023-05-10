@@ -11,6 +11,7 @@ password: {{ .password }}
 content_type: "{{ .content_type }}"
 secret: {{ .secret | tojson }}
 ssl: {{ .ssl | tojson }}
+crc.provider: {{ .crc.provider }}
 
 {{ else if eq .input "file" }}
 
