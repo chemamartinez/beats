@@ -18,14 +18,18 @@ import (
 
 func createS3API(ctx context.Context, config config, awsConfig awssdk.Config) (*awsS3API, error) {
 	s3Client := s3.NewFromConfig(awsConfig, config.s3ConfigModifier)
-	regionName, err := getRegionForBucket(ctx, s3Client, config.getBucketName())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get AWS region for bucket: %w", err)
-	}
-	// Can this really happen?
-	if regionName != awsConfig.Region {
-		awsConfig.Region = regionName
-		s3Client = s3.NewFromConfig(awsConfig, config.s3ConfigModifier)
+
+	// Only attempt to get the region for Bucket ARNs, not Access Point ARNs
+	if !isAccessPointARN(config.getBucketARN()) {
+		regionName, err := getRegionForBucket(ctx, s3Client, config.getBucketName())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get AWS region for bucket: %w", err)
+		}
+		// Can this really happen?
+		if regionName != awsConfig.Region {
+			awsConfig.Region = regionName
+			s3Client = s3.NewFromConfig(awsConfig, config.s3ConfigModifier)
+		}
 	}
 
 	return newAWSs3API(s3Client), nil
@@ -43,6 +47,12 @@ func createPipelineClient(pipeline beat.Pipeline, acks *awsACKHandler) (beat.Cli
 }
 
 func getRegionForBucket(ctx context.Context, s3Client *s3.Client, bucketName string) (string, error) {
+	// Skip region fetching if it's an Access Point ARN
+	if isAccessPointARN(bucketName) {
+		// Extract the region from the ARN (e.g., arn:aws:s3:us-west-2:123456789012:accesspoint/my-access-point)
+		return getRegionFromARN(bucketName), nil
+	}
+
 	getBucketLocationOutput, err := s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
 		Bucket: awssdk.String(bucketName),
 	})
@@ -57,6 +67,15 @@ func getRegionForBucket(ctx context.Context, s3Client *s3.Client, bucketName str
 	}
 
 	return string(getBucketLocationOutput.LocationConstraint), nil
+}
+
+// Helper function to extract region from ARN
+func getRegionFromARN(arn string) string {
+	arnParts := strings.Split(arn, ":")
+	if len(arnParts) > 3 {
+		return arnParts[3] // The fourth part of ARN is region
+	}
+	return ""
 }
 
 func getBucketNameFromARN(bucketARN string) string {

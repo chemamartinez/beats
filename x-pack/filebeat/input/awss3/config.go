@@ -7,6 +7,7 @@ package awss3
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
@@ -139,6 +140,9 @@ type backupConfig struct {
 
 func (c *backupConfig) GetBucketName() string {
 	if c.BackupToBucketArn != "" {
+		if isAccessPointARN(c.BackupToBucketArn) {
+			return c.BackupToBucketArn
+		}
 		return getBucketNameFromARN(c.BackupToBucketArn)
 	}
 	return c.NonAWSBackupToBucketName
@@ -226,6 +230,10 @@ func (c config) getBucketName() string {
 		return c.NonAWSBucketName
 	}
 	if c.BucketARN != "" {
+		// Check if it's an Access Point ARN
+		if isAccessPointARN(c.BucketARN) {
+			return c.BucketARN // Return full ARN for Access Points
+		}
 		return getBucketNameFromARN(c.BucketARN)
 	}
 	return ""
@@ -276,4 +284,13 @@ func (c config) getFileSelectors() []fileSelectorConfig {
 		return c.FileSelectors
 	}
 	return []fileSelectorConfig{{ReaderConfig: c.ReaderConfig}}
+}
+
+// Helper function to detect if an ARN is an Access Point
+func isAccessPointARN(arn string) bool {
+	arnParts := strings.Split(arn, ":")
+	if len(arnParts) < 6 {
+		return false
+	}
+	return strings.Contains(arn, ":accesspoint/")
 }

@@ -6,6 +6,7 @@ package awss3
 
 import (
 	"fmt"
+	"strings"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 
@@ -48,7 +49,27 @@ func (im *s3InputManager) Create(cfg *conf.C) (v2.Input, error) {
 		return nil, fmt.Errorf("initializing AWS config: %w", err)
 	}
 
-	if config.AWSConfig.Endpoint != "" {
+	if config.BucketARN != "" && isAccessPointARN(config.BucketARN) {
+		// When using the access point ARN, requests must be directed to the
+		// access point hostname. The access point hostname takes the form
+		// AccessPointName-AccountId.s3-accesspoint.Region.amazonaws.com
+		arnParts := strings.Split(config.BucketARN, ":")
+		accountID := arnParts[4]
+		region := arnParts[3]
+		accessPointName := strings.Split(arnParts[5], "/")[1]
+
+		// Construct the endpoint for the Access Point
+		endpoint := fmt.Sprintf("%s-%s.s3-accesspoint.%s.amazonaws.com", accessPointName, accountID, region)
+
+		// Set up a custom endpoint resolver for Access Points
+		awsConfig.EndpointResolverWithOptions = awssdk.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (awssdk.Endpoint, error) {
+			return awssdk.Endpoint{
+				URL:               fmt.Sprintf("https://%s", endpoint),
+				SigningRegion:     region,
+				HostnameImmutable: true,
+			}, nil
+		})
+	} else if config.AWSConfig.Endpoint != "" {
 		// Add a custom endpointResolver to the awsConfig so that all the requests are routed to this endpoint
 		awsConfig.EndpointResolverWithOptions = awssdk.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (awssdk.Endpoint, error) {
 			return awssdk.Endpoint{
